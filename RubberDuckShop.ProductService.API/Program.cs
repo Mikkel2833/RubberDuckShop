@@ -1,7 +1,11 @@
+using MediatR;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.Identity.Web;
 using Microsoft.Identity.Web.Resource;
+using RubberDuckShop.ProductService.Application.Queries.Product;
+using System.Reflection;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -9,6 +13,8 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddMicrosoftIdentityWebApi(builder.Configuration.GetSection("AzureAd"));
 builder.Services.AddAuthorization();
+
+builder.Services.AddMediatR(Assembly.GetExecutingAssembly(), typeof(GetProductsPaginatedQuery).Assembly);
 
 // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
 builder.Services.AddEndpointsApiExplorer();
@@ -30,32 +36,33 @@ app.UseAuthorization();
 
 var scopeRequiredByApi = app.Configuration["AzureAd:Scopes"];
 
-
-var summaries = new[]
+app.MapGet("/products", async ([FromServices] IMediator mediator, Guid? productCategoryId, int pageSize, int pageNumber) =>
 {
-    "Freezing", "Bracing", "Chilly", "Cool", "Mild", "Warm", "Balmy", "Hot", "Sweltering", "Scorching"
-};
+    var products = await mediator.Send(new GetProductsPaginatedQuery()
+    {
+        PageSize = pageSize,
+        PageNumber = pageNumber,
+        ProductCategoryId = productCategoryId
+    });
 
-app.MapGet("/weatherforecast", (HttpContext httpContext) =>
-{
-    httpContext.VerifyUserHasAnyAcceptedScope(scopeRequiredByApi);
+    return products is not null ? Results.Ok(products) : Results.NotFound();
+});
 
-    var forecast = Enumerable.Range(1, 5).Select(index =>
-       new WeatherForecast
-       (
-           DateTime.Now.AddDays(index),
-           Random.Shared.Next(-20, 55),
-           summaries[Random.Shared.Next(summaries.Length)]
-       ))
-        .ToArray();
-    return forecast;
-})
-.WithName("GetWeatherForecast")
-.RequireAuthorization();
+//app.MapGet("/weatherforecast", (HttpContext httpContext) =>
+//{
+//    httpContext.VerifyUserHasAnyAcceptedScope(scopeRequiredByApi);
+
+//    var forecast = Enumerable.Range(1, 5).Select(index =>
+//       new WeatherForecast
+//       (
+//           DateTime.Now.AddDays(index),
+//           Random.Shared.Next(-20, 55),
+//           summaries[Random.Shared.Next(summaries.Length)]
+//       ))
+//        .ToArray();
+//    return forecast;
+//})
+//.WithName("GetWeatherForecast")
+//.RequireAuthorization();
 
 app.Run();
-
-internal record WeatherForecast(DateTime Date, int TemperatureC, string? Summary)
-{
-    public int TemperatureF => 32 + (int)(TemperatureC / 0.5556);
-}
